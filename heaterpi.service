@@ -1,0 +1,9 @@
+[Unit]
+Description=Heater control via GPIO
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/heaterpi
+
+[Install]
+WantedBy=multi-user.target
