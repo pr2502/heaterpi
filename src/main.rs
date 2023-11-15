@@ -1,54 +1,58 @@
+use std::net::SocketAddr;
+
+use axum::http::{Request, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use rppal::gpio::Gpio;
-use serde_json::{json, Value};
-use tracing::{info, warn};
+use serde::Serialize;
+use tower_http::trace::TraceLayer;
+use tracing::{error, info, info_span, Level, Span};
+use tracing_subscriber::{filter, fmt, prelude::*};
 
-fn init_logging() {
-    use tracing::Level;
-    use tracing_subscriber::prelude::*;
-    use tracing_subscriber::{filter, fmt};
-
-    tracing_subscriber::registry()
-        .with(fmt::layer().without_time())
-        .with(filter::LevelFilter::from_level(Level::INFO))
-        .init();
-}
+mod api;
 
 async fn root() {}
 
-async fn health() -> Json<Value> {
-    Json(json!({}))
-}
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct HealthResponse {}
 
-async fn api_heater_enable(Json(req): Json<Value>) {
-    info!(?req);
-
-    let gpio = Gpio::new().unwrap();
-    let mut pin = gpio.get(2).unwrap().into_output();
-
-    match req.get("state").unwrap().as_str().unwrap() {
-        "on" => {
-            pin.set_high();
-        }
-        "off" => {
-            pin.set_low();
-        }
-        state => warn!(?state, "unknown state"),
-    }
+async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {})
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    init_logging();
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(filter::LevelFilter::from_level(Level::INFO))
+        .init();
 
     let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
-        .route("/api/heater/enable", post(api_heater_enable));
+        .route("/api/heater/enable", post(api::heater_enable))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &Request<_>| {
+                    let method = request.method();
+                    let path = request.uri();
+                    info_span!("request", ?method, ?path)
+                })
+                .on_request(())
+                .on_response(|response: &Response<_>, latency, span: &Span| {
+                    let status = response.status();
+                    info!(parent: span, ?status, ?latency, "finished processing request");
+                })
+                .on_body_chunk(())
+                .on_eos(())
+                .on_failure(|error, latency, span: &Span| {
+                    error!(parent: span, ?error, ?latency, "error processing request");
+                }),
+        );
 
-    info!("listening on :3000");
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    let addr: SocketAddr = "0.0.0.0:3000".parse().unwrap();
+    info!(?addr, "listening");
+    axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
         .unwrap()

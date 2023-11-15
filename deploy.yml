@@ -1,0 +1,37 @@
+- name: Deploy heaterpi
+  hosts: heaterpi
+  become: true
+
+  handlers:
+    - name: Systemd daemon-reload
+      systemd:
+        daemon_reload: true
+
+    - name: Restart heaterpi service
+      systemd:
+        name: heaterpi.service
+        state: restarted
+
+  tasks:
+    - name: Install heaterpi service
+      copy:
+        src: heaterpi.service
+        dest: /etc/systemd/system/heaterpi.service
+      notify:
+        - Systemd daemon-reload
+        - Restart heaterpi service
+
+    - name: Enable heaterpi service
+      systemd:
+        name: heaterpi.service
+        enabled: true
+
+    - name: Install heaterpi executable
+      copy:
+        src: target/arm-unknown-linux-gnueabihf/release/heaterpi
+        dest: /usr/local/bin/heaterpi
+        mode: '0755'
+        owner: root
+        group: root
+      notify: Restart heaterpi service
+      tags: [install]
