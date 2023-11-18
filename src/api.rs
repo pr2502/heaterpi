@@ -12,7 +12,7 @@ use axum::{
     Json,
 };
 use rppal::gpio::Gpio;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, instrument};
 
@@ -29,8 +29,11 @@ pub enum HeaterState {
     Off,
 }
 
+#[derive(Debug, Serialize)]
+pub struct HeaterEnableResponse {}
+
 #[instrument(skip_all)]
-pub async fn heater_enable(Json(req): Json<HeaterEnableRequest>) {
+pub async fn heater_enable(Json(req): Json<HeaterEnableRequest>) -> Json<HeaterEnableResponse> {
     let gpio = Gpio::new().unwrap();
     let mut pin = gpio.get(2).unwrap().into_output();
 
@@ -44,6 +47,7 @@ pub async fn heater_enable(Json(req): Json<HeaterEnableRequest>) {
             info!("disabled");
         }
     }
+    Json(HeaterEnableResponse {})
 }
 
 pub struct CameraState {

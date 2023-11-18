@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width" />
+  <title>heaterpi</title>
+  <link rel="icon" href="data:," />
+</head>
+
+<body>
+  <main>
+    <div>
+      <p>Camera captures every 10 seconds and the web page automatically refreshes the image every 5 seconds.</p>
+      <dl>
+        <dt>No lights</dt>
+        <dd>heater is disabled (HDO probably?)</dd>
+        <dt>Only yellow light</dt>
+        <dd>heater is ready but turned on</dd>
+        <dt>Both yellow and green lights</dt>
+        <dd>heating is on</dd>
+      </dl>
+      <img src="/api/camera" width="400px" id="camera" />
+    </div>
+    <div>
+      <input type="button" value="On" id="on" />
+      <input type="button" value="Off" id="off" />
+    </div>
+  </main>
+
+  <script type="text/javascript">
+    // Respond to 'On' and 'Off' buttons
+    async function post(api, body) {
+      const res = await fetch(`/api/${api}`, {
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return await res.json();
+    };
+    document.getElementById("on").onclick = async () => {
+      await post("heater/enable", {state: "on"})
+    };
+    document.getElementById("off").onclick = async () => {
+      await post("heater/enable", {state: "off"})
+    };
+
+    // Refresh the camera image every 5 seconds
+    setInterval(() => {
+      // Append timestamp for cache busting
+      document.getElementById("camera").src = `/api/camera?timestamp=${new Date().getTime()}`;
+    }, 5000);
+  </script>
+</body>
+
+</html>

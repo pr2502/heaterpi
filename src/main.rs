@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use askama::Template;
 use axum::http::{Request, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -11,7 +12,13 @@ use tracing_subscriber::{filter, fmt, prelude::*};
 
 mod api;
 
-async fn root() {}
+#[derive(Template)]
+#[template(path = "index.html")]
+struct IndexTemplate {}
+
+async fn root() -> IndexTemplate {
+    IndexTemplate {}
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
