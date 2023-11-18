@@ -16,11 +16,11 @@
         <dt>No lights</dt>
         <dd>heater is disabled (HDO probably?)</dd>
         <dt>Only yellow light</dt>
-        <dd>heater is ready but turned on</dd>
+        <dd>heater is ready but turned off</dd>
         <dt>Both yellow and green lights</dt>
         <dd>heating is on</dd>
       </dl>
-      <img src="/api/camera" width="400px" id="camera" />
+      <img src="api/camera" width="400px" id="camera" />
     </div>
     <div>
       <input type="button" value="On" id="on" />
@@ -31,7 +31,7 @@
   <script type="text/javascript">
     // Respond to 'On' and 'Off' buttons
     async function post(api, body) {
-      const res = await fetch(`/api/${api}`, {
+      const res = await fetch(`api/${api}`, {
         headers: {
           "Accept": "application/json",
           "Content-Type": "application/json",
@@ -51,7 +51,7 @@
     // Refresh the camera image every 5 seconds
     setInterval(() => {
       // Append timestamp for cache busting
-      document.getElementById("camera").src = `/api/camera?timestamp=${new Date().getTime()}`;
+      document.getElementById("camera").src = `api/camera?timestamp=${new Date().getTime()}`;
     }, 5000);
   </script>
 </body>
