@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use axum::http::{Request, Response};
 use axum::routing::{get, post};
@@ -31,6 +32,8 @@ async fn main() {
         .route("/", get(root))
         .route("/health", get(health))
         .route("/api/heater/enable", post(api::heater_enable))
+        .route("/api/camera", get(api::camera))
+        .with_state(api::CameraState::start(Duration::from_secs(10)))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {
