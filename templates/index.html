@@ -26,6 +26,9 @@
       <input type="button" value="On" id="on" />
       <input type="button" value="Off" id="off" />
     </div>
+    <div>
+      <pre id="response"></pre>
+    </div>
   </main>
 
   <script type="text/javascript">
@@ -49,15 +52,18 @@
     };
 
     document.getElementById("on").onclick = async () => {
-      await post("heater/enable", {state: "on"})
+      const data = await post("heater/enable", {state: "on"});
+      document.getElementById("response").innerText = JSON.stringify(data);
     };
     document.getElementById("off").onclick = async () => {
-      await post("heater/enable", {state: "off"})
+      const data = await post("heater/enable", {state: "off"});
+      document.getElementById("response").innerText = JSON.stringify(data);
     };
 
     // Refresh the camera data every second
     setInterval(async () => {
-      document.getElementById("camera").innerText = JSON.stringify(await get("camera"));
+      const data = await get("camera");
+      document.getElementById("camera").innerText = JSON.stringify(data);
     }, 1000);
   </script>
 </body>
