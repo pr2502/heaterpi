@@ -1,16 +1,10 @@
-use std::{
-    process::{Command, Output},
-    sync::Arc,
-    time::Duration,
-};
+use std::process::{Command, Output};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use axum::{
-    body::{Bytes, Full},
-    extract::State,
-    http::StatusCode,
-    response::Response,
-    Json,
-};
+use axum::extract::State;
+use axum::Json;
+use image::{GenericImageView, RgbImage, SubImage};
 use rppal::gpio::Gpio;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -51,24 +45,56 @@ pub async fn heater_enable(Json(req): Json<HeaterEnableRequest>) -> Json<HeaterE
 }
 
 pub struct CameraState {
-    full_jpg: Mutex<Bytes>,
+    yellow: bool,
+    green: bool,
+    captured: Instant,
+}
+
+const WIDTH: u32 = 1640;
+const HEIGHT: u32 = 1232;
+
+// Measured from a sample image. Thresholds are 50 below the measured value rounded to nearest 5.
+const YELLOW_POS: (u32, u32, u32, u32) = (881, 269, 9, 10);
+const GREEN_POS: (u32, u32, u32, u32) = (927, 268, 9, 10);
+const YELLOW_THRESHOLD: (u64, u64, u64) = (155, 105, 0);
+const GREEN_THRESHOLD: (u64, u64, u64) = (145, 180, 0);
+
+fn view_avg(view: SubImage<&RgbImage>) -> (u64, u64, u64) {
+    let count = view.pixels().count() as u64;
+    let sum = view.pixels().fold((0, 0, 0), |acc, (_, _, pix)| {
+        (
+            acc.0 + u64::from(pix[0]),
+            acc.1 + u64::from(pix[1]),
+            acc.2 + u64::from(pix[2]),
+        )
+    });
+    (sum.0 / count, sum.1 / count, sum.2 / count)
+}
+
+fn test(val: (u64, u64, u64), thresh: (u64, u64, u64)) -> bool {
+    val.0 > thresh.0 && val.1 > thresh.1 && val.2 > thresh.2
 }
 
 impl CameraState {
-    pub fn start(interval: Duration) -> Arc<CameraState> {
-        let state = Arc::new(CameraState {
-            full_jpg: Mutex::default(),
-        });
+    pub fn start(interval: Duration) -> Arc<Mutex<CameraState>> {
+        let state = Arc::new(Mutex::new(CameraState {
+            yellow: false,
+            green: false,
+            captured: Instant::now(),
+        }));
         tokio::task::spawn_blocking({
             let state = state.clone();
             move || loop {
+                std::thread::sleep(interval);
+
                 // update the state
                 let res = Command::new("libcamera-still")
-                    .args(["--width", "1640"])
-                    .args(["--height", "1232"])
+                    .args(["--width", &format!("{WIDTH}")])
+                    .args(["--height", &format!("{HEIGHT}")])
                     .arg("--immediate")
                     .arg("--nopreview")
                     .arg("--flush")
+                    .args(["--encoding", "rgb"])
                     .args(["--output", "-"])
                     .output();
 
@@ -78,26 +104,46 @@ impl CameraState {
                             stderr = %String::from_utf8_lossy(&stderr),
                             "libcamera-still stderr",
                         );
-                        *state.full_jpg.blocking_lock() = Bytes::copy_from_slice(&stdout);
+
+                        let Some(img) = RgbImage::from_raw(WIDTH, HEIGHT, stdout) else {
+                            error!("parse raw image from libcamera output");
+                            continue;
+                        };
+
+                        let mut state = state.blocking_lock();
+                        state.captured = Instant::now();
+
+                        let (x, y, w, h) = YELLOW_POS;
+                        let yellow = view_avg(img.view(x, y, w, h));
+                        state.yellow = test(yellow, YELLOW_THRESHOLD);
+
+                        let (x, y, w, h) = GREEN_POS;
+                        let green = view_avg(img.view(x, y, w, h));
+                        state.green = test(green, GREEN_THRESHOLD);
                     }
                     Err(err) => {
                         error!(?err, "error capturing image");
                     }
                 }
-
-                std::thread::sleep(interval);
             }
         });
         state
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct CameraResponse {
+    yellow: bool,
+    green: bool,
+    age: u64,
+}
+
 #[instrument(skip_all)]
-pub async fn camera(State(camera): State<Arc<CameraState>>) -> Response<Full<Bytes>> {
-    let body = camera.full_jpg.lock().await.clone();
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "image/jpeg")
-        .body(Full::from(body))
-        .unwrap()
+pub async fn camera(State(camera): State<Arc<Mutex<CameraState>>>) -> Json<CameraResponse> {
+    let camera = camera.lock().await;
+    Json(CameraResponse {
+        yellow: camera.yellow,
+        green: camera.green,
+        age: camera.captured.elapsed().as_secs(),
+    })
 }

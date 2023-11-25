@@ -40,7 +40,7 @@ async fn main() {
         .route("/health", get(health))
         .route("/api/heater/enable", post(api::heater_enable))
         .route("/api/camera", get(api::camera))
-        .with_state(api::CameraState::start(Duration::from_secs(10)))
+        .with_state(api::CameraState::start(Duration::from_secs(5)))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {

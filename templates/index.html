@@ -11,7 +11,7 @@
 <body>
   <main>
     <div>
-      <p>Camera captures every 10 seconds and the web page automatically refreshes the image every 5 seconds.</p>
+      <p>Camera captures every 5 seconds and the web page automatically refreshes the data every second.</p>
       <dl>
         <dt>No lights</dt>
         <dd>heater is disabled (HDO probably?)</dd>
@@ -20,7 +20,7 @@
         <dt>Both yellow and green lights</dt>
         <dd>heating is on</dd>
       </dl>
-      <img src="api/camera" width="400px" id="camera" />
+      <pre id="camera">{}</pre>
     </div>
     <div>
       <input type="button" value="On" id="on" />
@@ -29,7 +29,13 @@
   </main>
 
   <script type="text/javascript">
-    // Respond to 'On' and 'Off' buttons
+    async function get(api) {
+      const res = await fetch(`api/${api}`, {
+        "Accept": "application/json",
+      });
+      return await res.json();
+    }
+
     async function post(api, body) {
       const res = await fetch(`api/${api}`, {
         headers: {
@@ -41,6 +47,7 @@
       });
       return await res.json();
     };
+
     document.getElementById("on").onclick = async () => {
       await post("heater/enable", {state: "on"})
     };
@@ -48,11 +55,10 @@
       await post("heater/enable", {state: "off"})
     };
 
-    // Refresh the camera image every 5 seconds
-    setInterval(() => {
-      // Append timestamp for cache busting
-      document.getElementById("camera").src = `api/camera?timestamp=${new Date().getTime()}`;
-    }, 5000);
+    // Refresh the camera data every second
+    setInterval(async () => {
+      document.getElementById("camera").innerText = JSON.stringify(await get("camera"));
+    }, 1000);
   </script>
 </body>
 
