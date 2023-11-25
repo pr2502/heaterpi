@@ -16,32 +16,53 @@ pub struct HeaterEnableRequest {
     state: HeaterState,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "kebab-case")]
 pub enum HeaterState {
     On,
     Off,
+    #[serde(skip_deserializing)]
+    Unknown,
 }
 
 #[derive(Debug, Serialize)]
-pub struct HeaterEnableResponse {}
+#[serde(rename_all = "kebab-case")]
+pub struct HeaterEnableResponse {
+    prev_state: HeaterState,
+    changed: bool,
+}
 
 #[instrument(skip_all)]
 pub async fn heater_enable(Json(req): Json<HeaterEnableRequest>) -> Json<HeaterEnableResponse> {
     let gpio = Gpio::new().unwrap();
     let mut pin = gpio.get(2).unwrap().into_output();
 
-    match req.state {
-        HeaterState::On => {
+    let prev_state = if pin.is_set_low() {
+        HeaterState::Off
+    } else if pin.is_set_high() {
+        HeaterState::On
+    } else {
+        HeaterState::Unknown
+    };
+
+    let changed = match (prev_state, req.state) {
+        (HeaterState::Off | HeaterState::Unknown, HeaterState::On) => {
             pin.set_high();
             info!("enabled");
+            true
         }
-        HeaterState::Off => {
+        (HeaterState::On | HeaterState::Unknown, HeaterState::Off) => {
             pin.set_low();
             info!("disabled");
+            true
         }
-    }
-    Json(HeaterEnableResponse {})
+        _ => false,
+    };
+
+    Json(HeaterEnableResponse {
+        prev_state,
+        changed,
+    })
 }
 
 pub struct CameraState {
@@ -132,6 +153,7 @@ impl CameraState {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct CameraResponse {
     yellow: bool,
     green: bool,

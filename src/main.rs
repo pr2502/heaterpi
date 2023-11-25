@@ -7,7 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use tower_http::trace::TraceLayer;
-use tracing::{error, info, info_span, Level, Span};
+use tracing::{debug, error, info, info_span, Level, Span};
 use tracing_subscriber::{filter, fmt, prelude::*};
 
 mod api;
@@ -51,7 +51,7 @@ async fn main() {
                 .on_request(())
                 .on_response(|response: &Response<_>, latency, span: &Span| {
                     let status = response.status();
-                    info!(parent: span, ?status, ?latency, "finished processing request");
+                    debug!(parent: span, ?status, ?latency, "finished processing request");
                 })
                 .on_body_chunk(())
                 .on_eos(())
