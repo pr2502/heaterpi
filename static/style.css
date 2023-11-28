@@ -1,0 +1,62 @@
+html {
+  background: #ffffff;
+  color: #888888;
+  font-family: sans-serif;
+  box-shadow: 0px 8px #5bcefa inset, 0px 16px #f5a9b8 inset;
+}
+
+main {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.card {
+  margin: 16px;
+  display: flex;
+}
+
+.card>* {
+  color: #888888;
+  text-decoration: none;
+
+  border-style: solid;
+  border-color: #cccccc;
+  border-width: 1px 0px 1px 1px;
+  padding: 16px;
+  flex: auto;
+}
+
+.card>*:first-child {
+  border-radius: 4px 0px 0px 4px;
+}
+
+.card>*:last-child {
+  border-width: 1px;
+  border-radius: 0px 4px 4px 0px;
+}
+
+
+#target.false,
+#hdo.false,
+#heat.false {
+  background: #dddddd;
+}
+
+#target.true {
+  color: #ffffff;
+  background: #8197bf;
+}
+
+#hdo.true {
+  color: #444444;
+  background: #fad07a;
+}
+
+#heat.true {
+  color: #ffffff;
+  background: #99ad6a;
+}
+
+.card a:hover {
+  box-shadow: 1px 1px 1px #cccccc;
+}

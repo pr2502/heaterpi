@@ -1,23 +1,23 @@
-use std::process::{Command, Output};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::Json;
-use image::{GenericImageView, RgbImage, SubImage};
-use rppal::gpio::Gpio;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, instrument};
+use tracing::{info, instrument};
+
+use crate::camera::Camera;
+use crate::gpio::Gpio;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "camelCase")]
 pub struct HeaterEnableRequest {
     state: HeaterState,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "camelCase")]
 pub enum HeaterState {
     On,
     Off,
@@ -26,7 +26,7 @@ pub enum HeaterState {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "camelCase")]
 pub struct HeaterEnableResponse {
     prev_state: HeaterState,
     changed: bool,
@@ -34,25 +34,22 @@ pub struct HeaterEnableResponse {
 
 #[instrument(skip_all)]
 pub async fn heater_enable(Json(req): Json<HeaterEnableRequest>) -> Json<HeaterEnableResponse> {
-    let gpio = Gpio::new().unwrap();
-    let mut pin = gpio.get(2).unwrap().into_output();
+    let mut gpio = Gpio::new();
 
-    let prev_state = if pin.is_set_low() {
-        HeaterState::Off
-    } else if pin.is_set_high() {
-        HeaterState::On
-    } else {
-        HeaterState::Unknown
+    let prev_state = match gpio.get_state() {
+        Some(true) => HeaterState::On,
+        Some(false) => HeaterState::Off,
+        None => HeaterState::Unknown,
     };
 
     let changed = match (prev_state, req.state) {
         (HeaterState::Off | HeaterState::Unknown, HeaterState::On) => {
-            pin.set_high();
+            gpio.set_state(true);
             info!("enabled");
             true
         }
         (HeaterState::On | HeaterState::Unknown, HeaterState::Off) => {
-            pin.set_low();
+            gpio.set_state(false);
             info!("disabled");
             true
         }
@@ -65,87 +62,34 @@ pub async fn heater_enable(Json(req): Json<HeaterEnableRequest>) -> Json<HeaterE
     })
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeaterStateResponse {
+    target: bool,
+}
+
+pub async fn heater_state() -> Json<HeaterStateResponse> {
+    let gpio = Gpio::new();
+
+    Json(HeaterStateResponse {
+        target: gpio.get_state().unwrap_or(false),
+    })
+}
+
 pub struct CameraState {
-    yellow: bool,
-    green: bool,
-    captured: Instant,
-}
-
-const WIDTH: u32 = 1640;
-const HEIGHT: u32 = 1232;
-
-// Measured from a sample image. Thresholds are 50 below the measured value rounded to nearest 5.
-const YELLOW_POS: (u32, u32, u32, u32) = (881, 269, 9, 10);
-const GREEN_POS: (u32, u32, u32, u32) = (927, 268, 9, 10);
-const YELLOW_THRESHOLD: (u64, u64, u64) = (155, 105, 0);
-const GREEN_THRESHOLD: (u64, u64, u64) = (145, 180, 0);
-
-fn view_avg(view: SubImage<&RgbImage>) -> (u64, u64, u64) {
-    let count = view.pixels().count() as u64;
-    let sum = view.pixels().fold((0, 0, 0), |acc, (_, _, pix)| {
-        (
-            acc.0 + u64::from(pix[0]),
-            acc.1 + u64::from(pix[1]),
-            acc.2 + u64::from(pix[2]),
-        )
-    });
-    (sum.0 / count, sum.1 / count, sum.2 / count)
-}
-
-fn test(val: (u64, u64, u64), thresh: (u64, u64, u64)) -> bool {
-    val.0 > thresh.0 && val.1 > thresh.1 && val.2 > thresh.2
+    camera: Mutex<Camera>,
 }
 
 impl CameraState {
-    pub fn start(interval: Duration) -> Arc<Mutex<CameraState>> {
-        let state = Arc::new(Mutex::new(CameraState {
-            yellow: false,
-            green: false,
-            captured: Instant::now(),
-        }));
+    pub fn start(interval: Duration) -> Arc<CameraState> {
+        let state = Arc::new(CameraState {
+            camera: Mutex::new(Camera::new()),
+        });
         tokio::task::spawn_blocking({
             let state = state.clone();
             move || loop {
+                state.camera.blocking_lock().update();
                 std::thread::sleep(interval);
-
-                // update the state
-                let res = Command::new("libcamera-still")
-                    .args(["--width", &format!("{WIDTH}")])
-                    .args(["--height", &format!("{HEIGHT}")])
-                    .arg("--immediate")
-                    .arg("--nopreview")
-                    .arg("--flush")
-                    .args(["--encoding", "rgb"])
-                    .args(["--output", "-"])
-                    .output();
-
-                match res {
-                    Ok(Output { stdout, stderr, .. }) => {
-                        debug!(
-                            stderr = %String::from_utf8_lossy(&stderr),
-                            "libcamera-still stderr",
-                        );
-
-                        let Some(img) = RgbImage::from_raw(WIDTH, HEIGHT, stdout) else {
-                            error!("parse raw image from libcamera output");
-                            continue;
-                        };
-
-                        let mut state = state.blocking_lock();
-                        state.captured = Instant::now();
-
-                        let (x, y, w, h) = YELLOW_POS;
-                        let yellow = view_avg(img.view(x, y, w, h));
-                        state.yellow = test(yellow, YELLOW_THRESHOLD);
-
-                        let (x, y, w, h) = GREEN_POS;
-                        let green = view_avg(img.view(x, y, w, h));
-                        state.green = test(green, GREEN_THRESHOLD);
-                    }
-                    Err(err) => {
-                        error!(?err, "error capturing image");
-                    }
-                }
             }
         });
         state
@@ -153,7 +97,7 @@ impl CameraState {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "camelCase")]
 pub struct CameraResponse {
     yellow: bool,
     green: bool,
@@ -161,11 +105,11 @@ pub struct CameraResponse {
 }
 
 #[instrument(skip_all)]
-pub async fn camera(State(camera): State<Arc<Mutex<CameraState>>>) -> Json<CameraResponse> {
-    let camera = camera.lock().await;
+pub async fn camera(State(state): State<Arc<CameraState>>) -> Json<CameraResponse> {
+    let camera = state.camera.lock().await;
     Json(CameraResponse {
-        yellow: camera.yellow,
-        green: camera.green,
-        age: camera.captured.elapsed().as_secs(),
+        yellow: camera.yellow(),
+        green: camera.green(),
+        age: camera.age(),
     })
 }

@@ -1,7 +1,6 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use askama::Template;
 use axum::http::{Request, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -11,17 +10,26 @@ use tracing::{debug, error, info, info_span, Level, Span};
 use tracing_subscriber::{filter, fmt, prelude::*};
 
 mod api;
+mod camera;
+mod gpio;
 
-#[derive(Template)]
-#[template(path = "index.html")]
-struct IndexTemplate {}
-
-async fn root() -> IndexTemplate {
-    IndexTemplate {}
+macro_rules! static_file {
+    ( $name: literal, $content_type: literal ) => {{
+        use axum::http::{header, HeaderName, StatusCode};
+        async fn handler() -> (StatusCode, [(HeaderName, &'static str); 1], &'static str) {
+            const BODY: &'static str = include_str!(concat!("../static/", $name));
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, $content_type)],
+                BODY,
+            ) 
+        }
+        handler
+    }};
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "camelCase")]
 struct HealthResponse {}
 
 async fn health() -> Json<HealthResponse> {
@@ -36,9 +44,12 @@ async fn main() {
         .init();
 
     let app = Router::new()
-        .route("/", get(root))
+        .route("/", get(static_file!("index.html", "text/html")))
+        .route("/script.js", get(static_file!("script.js", "application/javascript")))
+        .route("/style.css", get(static_file!("style.css", "text/css")))
         .route("/health", get(health))
         .route("/api/heater/enable", post(api::heater_enable))
+        .route("/api/heater/state", get(api::heater_state))
         .route("/api/camera", get(api::camera))
         .with_state(api::CameraState::start(Duration::from_secs(5)))
         .layer(
