@@ -27,14 +27,17 @@ document.getElementById("off").onclick = async () => {
   console.log(data);
 };
 
-// Refresh dynamic data every second
+// Refresh dynamic data on startup and every second
 const target = document.getElementById("target");
 const hdo = document.getElementById("hdo");
 const heat = document.getElementById("heat");
-setInterval(async () => {
+async function update() {
   const cameraData = await get("camera");
   hdo.setAttribute("class", JSON.stringify(cameraData.yellow));
   heat.setAttribute("class", JSON.stringify(cameraData.green));
+
   const heaterData = await get("heater/state");
   target.setAttribute("class", JSON.stringify(heaterData.target));
-}, 1000);
+}
+setInterval(async () => await update(), 1000);
+update();
