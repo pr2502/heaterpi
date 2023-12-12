@@ -36,8 +36,8 @@ const WIDTH: u32 = 1640;
 const HEIGHT: u32 = 1232;
 
 // Measured from a sample image. Thresholds are 50 below the measured value rounded to nearest 5.
-const YELLOW_POS: (u32, u32, u32, u32) = (881, 269, 9, 10);
-const GREEN_POS: (u32, u32, u32, u32) = (927, 268, 9, 10);
+const YELLOW_POS: (u32, u32, u32, u32) = (889, 275, 6, 8);
+const GREEN_POS: (u32, u32, u32, u32) = (936, 275, 6, 8);
 const YELLOW_THRESHOLD: (u64, u64, u64) = (155, 105, 0);
 const GREEN_THRESHOLD: (u64, u64, u64) = (145, 180, 0);
 
